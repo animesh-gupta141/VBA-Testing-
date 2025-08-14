@@ -1,0 +1,195 @@
+'----------------------------------------------------------------------------------------------------------------
+' Module: MarkdownCleanerForHeaders
+'
+' This module contains specific functions to clean markdown-formatted text for individual
+' data headers, making the code easy to understand and use with a one-to-one mapping.
+'
+' To use this code:
+' 1. Open the VBA editor (Alt + F11).
+' 2. Insert a new Module (Insert -> Module).
+' 3. Copy and paste this code into the new module.
+' 4. Call the specific cleaning function you need for each header in your main script.
+'----------------------------------------------------------------------------------------------------------------
+
+'----------------------------------------------------------------------------------------------------------------
+' Public Functions for Specific Headers (Slide 1)
+'----------------------------------------------------------------------------------------------------------------
+
+Public Function CleanCompanyName(text As String) As String
+    ' The requirement is to take the Company Name "as is", so no cleaning is needed.
+    CleanCompanyName = text
+End Function
+
+Public Function CleanProductsAndServices(text As String) As String
+    ' Handles both '####Heading' and '* ** subheading **' formats.
+    Dim cleanedText As String
+    If InStr(1, text, "####") = 1 Then
+        cleanedText = Trim(Mid(text, InStr(1, text, "####") + 4))
+    ElseIf InStr(1, text, "* **") = 1 Then
+        cleanedText = Replace(text, "* **", "", 1, 1, vbTextCompare)
+        cleanedText = Replace(cleanedText, "**", "", , , vbTextCompare)
+    Else
+        cleanedText = text
+    End If
+    CleanProductsAndServices = Trim(cleanedText)
+End Function
+
+Public Function CleanHeadquarters(text As String) As String
+    ' Takes the address and removes '[source)'.
+    Dim sourcePos As Integer
+    sourcePos = InStr(1, text, "[source)")
+    If sourcePos > 0 Then
+        CleanHeadquarters = Trim(Left(text, sourcePos - 1))
+    Else
+        CleanHeadquarters = Trim(text)
+    End If
+End Function
+
+Public Function CleanEndMarkets(text As String) As String
+    ' Takes the '#### heading' and text up to '(link)'.
+    Dim linkPos As Integer
+    linkPos = InStr(1, text, "(link)")
+    
+    Dim cleanedText As String
+    cleanedText = Trim(Replace(text, "####", "", 1, 1, vbTextCompare))
+    
+    If linkPos > 0 Then
+        cleanedText = Left(cleanedText, linkPos - 1)
+    End If
+    
+    CleanEndMarkets = Trim(cleanedText)
+End Function
+
+Public Function CleanNumberOfEmployees(text As String) As String
+    ' Takes text up to '[source]' and removes the source text.
+    Dim sourcePos As Integer
+    sourcePos = InStr(1, text, "[source]")
+    If sourcePos > 0 Then
+        CleanNumberOfEmployees = Trim(Left(text, sourcePos - 1))
+    Else
+        CleanNumberOfEmployees = Trim(text)
+    End If
+End Function
+
+Public Function CleanKeyManagement(text As String) As String
+    ' Takes '* **sub heading**' and returns only the subheading.
+    Dim cleanedText As String
+    cleanedText = Replace(text, "* **", "", 1, 1, vbTextCompare)
+    cleanedText = Replace(cleanedText, "**", "", , , vbTextCompare)
+    CleanKeyManagement = Trim(cleanedText)
+End Function
+
+Public Function CleanRecentDevelopment(text As String) As String
+    ' Takes a list item '* Some text' and removes the '*'.
+    Dim cleanedText As String
+    If InStr(1, text, "* ") = 1 Then
+        cleanedText = Mid(text, 3)
+    Else
+        cleanedText = text
+    End If
+    CleanRecentDevelopment = Trim(cleanedText)
+End Function
+
+Public Function CleanOwnershipDetails(text As String) As String
+    ' Takes the text or first line up to the first '*'.
+    Dim asteriskPos As Integer
+    asteriskPos = InStr(1, text, "*")
+    If asteriskPos > 0 Then
+        CleanOwnershipDetails = Trim(Left(text, asteriskPos - 1))
+    Else
+        CleanOwnershipDetails = Trim(text)
+    End If
+End Function
+
+'----------------------------------------------------------------------------------------------------------------
+' Public Functions for Specific Headers (Slide 2)
+'----------------------------------------------------------------------------------------------------------------
+
+Public Function CleanFinancialOverview(text As String) As String
+    ' The requirement is a table in Markdown format, so we return the text as is.
+    CleanFinancialOverview = text
+End Function
+
+Public Function CleanHistoricalTimeline(text As String) As String
+    ' Takes '* ** subheading**' and returns the subheading.
+    ' Note: The request to "take only 5 headings" would need to be handled by the looping logic
+    ' in your main macro, which would call this function for each of the first 5 lines.
+    Dim cleanedText As String
+    cleanedText = Replace(text, "* **", "", 1, 1, vbTextCompare)
+    cleanedText = Replace(cleanedText, "**", "", , , vbTextCompare)
+    CleanHistoricalTimeline = Trim(cleanedText)
+End Function
+
+Public Function CleanKeyMerger(text As String) As String
+    ' Handles '####Heading' and '* **Subheading**'.
+    Dim cleanedText As String
+    If InStr(1, text, "####") = 1 Then
+        cleanedText = Trim(Mid(text, InStr(1, text, "####") + 4))
+    ElseIf InStr(1, text, "* **") = 1 Then
+        cleanedText = Replace(text, "* **", "", 1, 1, vbTextCompare)
+        cleanedText = Replace(cleanedText, "**", "", , , vbTextCompare)
+    Else
+        cleanedText = text
+    End If
+    CleanKeyMerger = Trim(cleanedText)
+End Function
+
+Public Function CleanFinancingDetails(text As String) As String
+    ' Handles '###subheading:text' and '* **subheading**'.
+    Dim cleanedText As String
+    If InStr(1, text, "###") = 1 Then
+        cleanedText = Trim(Mid(text, InStr(1, text, "###") + 3))
+        cleanedText = Replace(cleanedText, ":", " ", 1, 1, vbTextCompare) ' Replace colon with space
+    ElseIf InStr(1, text, "* **") = 1 Then
+        cleanedText = Replace(text, "* **", "", 1, 1, vbTextCompare)
+        cleanedText = Replace(cleanedText, "**", "", , , vbTextCompare)
+    Else
+        cleanedText = text
+    End If
+    CleanFinancingDetails = Trim(cleanedText)
+End Function
+
+Public Function CleanRevenueBreakdown(text As String) As String
+    ' Handles multi-level list items: '* **subheading', '* Points', and '• Subpoints'.
+    Dim cleanedText As String
+    If InStr(1, text, "* **") = 1 Then
+        cleanedText = Replace(text, "* **", "", 1, 1, vbTextCompare)
+        cleanedText = Replace(cleanedText, "**", "", , , vbTextCompare)
+    ElseIf InStr(1, text, "* ") = 1 Then
+        cleanedText = Mid(text, 3)
+    ElseIf InStr(1, text, "• ") = 1 Then
+        cleanedText = Mid(text, 3)
+    Else
+        cleanedText = text
+    End If
+    CleanRevenueBreakdown = Trim(cleanedText)
+End Function
+
+'----------------------------------------------------------------------------------------------------------------
+' Example Sub to demonstrate how to use the new functions
+'----------------------------------------------------------------------------------------------------------------
+Public Sub ExampleUsageForHeaders()
+    Dim cleanedText As String
+    
+    ' Example for Slide 1 Headers
+    cleanedText = CleanProductsAndServices("#### Oil and Petroleum Products")
+    Debug.Print "Cleaned Products and Services Heading: '" & cleanedText & "'"
+    
+    cleanedText = CleanHeadquarters("Address [Source](https://trafigura.com)")
+    Debug.Print "Cleaned Headquarters: '" & cleanedText & "'"
+    
+    cleanedText = CleanKeyManagement("* **CEO: Richards**")
+    Debug.Print "Cleaned Key Management: '" & cleanedText & "'"
+    
+    ' Example for Slide 2 Headers
+    cleanedText = CleanHistoricalTimeline("* **Founding and Early operations (1993) **")
+    Debug.Print "Cleaned Historical Timeline: '" & cleanedText & "'"
+    
+    cleanedText = CleanKeyMerger("#### Feburary 2023 - recoagnrovaino (value:unvao)")
+    Debug.Print "Cleaned Key Merger Heading: '" & cleanedText & "'"
+    
+    cleanedText = CleanRevenueBreakdown("* **Crude Oil and Refined Products**")
+    Debug.Print "Cleaned Revenue Breakdown Subheading: '" & cleanedText & "'"
+    
+End Sub
+
