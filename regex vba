@@ -47,7 +47,29 @@ Sub CategoryWiseCount()
     MsgBox "Category-wise count completed!", vbInformation
 End Sub
 
+Option Explicit
 
+' Function to count regex matches inside one cell
+Function RegexCountCell(ByVal txt As String, ByVal pattern As String) As Long
+    Dim RE As Object, Matches As Object
+    
+    If IsEmpty(txt) Or Len(txt) = 0 Then
+        RegexCountCell = 0
+        Exit Function
+    End If
+    
+    Set RE = CreateObject("VBScript.RegExp")
+    RE.Pattern = pattern
+    RE.Global = True
+    RE.IgnoreCase = True
+    
+    If RE.Test(txt) Then
+        Set Matches = RE.Execute(txt)
+        RegexCountCell = Matches.Count
+    Else
+        RegexCountCell = 0
+    End If
+End Function
 
 
 
