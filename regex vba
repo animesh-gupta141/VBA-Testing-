@@ -46,3 +46,9 @@ Sub CategoryWiseCount()
     
     MsgBox "Category-wise count completed!", vbInformation
 End Sub
+
+
+
+
+
+=SUMPRODUCT(LEN(A$2:A$100) - LEN(REGEXREPLACE(A$2:A$100, "\bodeurs\b|\bodeur\b|\bl'odeur\b|\bd'odeurs\b", "")))
