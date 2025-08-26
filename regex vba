@@ -1,0 +1,48 @@
+Option Explicit
+
+Function RegexCount(rng As Range, pattern As String) As Long
+    Dim RE As Object, Matches As Object
+    Dim cell As Range
+    Dim cnt As Long
+    
+    Set RE = CreateObject("VBScript.RegExp")
+    RE.Pattern = pattern
+    RE.Global = True
+    RE.IgnoreCase = True
+    
+    cnt = 0
+    For Each cell In rng
+        If Not IsEmpty(cell.Value) And Len(cell.Value) > 0 Then
+            If RE.Test(cell.Value) Then
+                Set Matches = RE.Execute(cell.Value)
+                cnt = cnt + Matches.Count
+            End If
+        End If
+    Next cell
+    
+    RegexCount = cnt
+End Function
+
+Sub CategoryWiseCount()
+    Dim wsData As Worksheet, wsCat As Worksheet
+    Dim lastRowData As Long, lastRowCat As Long
+    Dim i As Long
+    Dim dataRange As Range
+    
+    Set wsData = ThisWorkbook.Sheets("DataSheet")        ' apni sheet ka naam change kar lena
+    Set wsCat = ThisWorkbook.Sheets("CategorySheet")     ' apni sheet ka naam change kar lena
+    
+    lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+    lastRowCat = wsCat.Cells(wsCat.Rows.Count, "A").End(xlUp).Row
+    
+    Set dataRange = wsData.Range("A2:A" & lastRowData)   ' A2 se data start maana
+    
+    ' Clear previous results
+    wsCat.Range("C2:C" & lastRowCat).ClearContents
+    
+    For i = 2 To lastRowCat
+        wsCat.Cells(i, 3).Value = RegexCount(dataRange, wsCat.Cells(i, 2).Value)
+    Next i
+    
+    MsgBox "Category-wise count completed!", vbInformation
+End Sub
