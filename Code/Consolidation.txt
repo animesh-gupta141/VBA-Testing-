@@ -1,0 +1,110 @@
+Sub ConsolidateExcelFiles()
+    ' --- Variables Declaration ---
+    ' Yeh section zaroori variables ko declare karta hai.
+    Dim folderPath As String          ' Folder ka path store karne ke liye jahan files rakhi hain.
+    Dim fileName As String            ' Loop mein har file ka naam store karne ke liye.
+    Dim sourceWB As Workbook          ' Har source file ko refer karne ke liye.
+    Dim destWB As Workbook            ' Nayi master file ko refer karne ke liye.
+    Dim sourceWS As Worksheet         ' Source file ki sheet ko refer karne ke liye.
+    Dim destWS As Worksheet           ' Master file ki sheet ko refer karne ke liye.
+    Dim lastRowSource As Long         ' Source file mein last data row ka number.
+    Dim lastColSource As Long         ' Source file mein last data column ka number.
+    Dim nextDestRow As Long           ' Master file mein agli khaali row ka number.
+    Dim headersCopied As Boolean      ' Check karne ke liye ki headers copy hue ya nahi.
+
+    ' --- User se Folder Select Karwayein ---
+    ' FileDialog ka istemal karke user ko folder select karne ka option dega.
+    With Application.FileDialog(msoFileDialogFolderPicker)
+        .Title = "Woh Folder Select Karein Jahan Excel Files Rakhi Hain"
+        .AllowMultiSelect = False
+        If .Show <> -1 Then
+            MsgBox "Process Cancelled.", vbInformation
+            Exit Sub ' Agar user ne cancel kiya toh code yahin ruk jayega.
+        End If
+        folderPath = .SelectedItems(1) & "\" ' Selected folder ke path ko store karega.
+    End With
+
+    ' --- Screen Updates ko Rokein aur Nayi Workbook Banayein ---
+    ' Process ko fast karne ke liye screen updating band kar dega.
+    Application.ScreenUpdating = False
+    
+    ' Ek nayi workbook banayega jahan saara data aayega.
+    Set destWB = Workbooks.Add
+    Set destWS = destWB.Worksheets(1)
+    destWS.Name = "Consolidated Data" ' Nayi sheet ka naam rakhega.
+    
+    ' Header copy hua ya nahi, iska status shuru mein False rakhega.
+    headersCopied = False
+
+    ' --- Folder ki Sabhi Excel Files par Loop Chalayein ---
+    ' Selected folder mein ".xls" se end hone wali sabhi files ko dhoondhega.
+    fileName = Dir(folderPath & "*.xls*")
+
+    ' Jab tak folder mein excel files milti rahengi, loop chalta rahega.
+    Do While fileName <> ""
+        ' Current file ko open karega.
+        Set sourceWB = Workbooks.Open(folderPath & fileName, True, True) ' Read-only mode mein open karega.
+        ' Maan lete hain ki data hamesha pehli sheet mein hai.
+        Set sourceWS = sourceWB.Worksheets(1)
+
+        ' --- Last Row aur Last Column Pata Karein (Dynamic Logic) ---
+        ' 1. Last Column: Header row (Row 2) se last column pata karega.
+        ' Yeh har mahine badhne wale columns ko handle kar lega.
+        If Application.WorksheetFunction.CountA(sourceWS.Rows(2)) > 0 Then
+            lastColSource = sourceWS.Cells(2, sourceWS.Columns.Count).End(xlToLeft).Column
+        Else
+            ' Agar row 2 khaali hai toh aage badh jaye.
+            GoTo NextFile
+        End If
+        
+        ' 2. Last Row: Column A, B, C, aur D mein se sabse aakhiri row pata karega.
+        ' Yeh uss case ko handle karega jab data A mein na hokar B, C ya D mein ho.
+        Dim lrA As Long, lrB As Long, lrC As Long, lrD As Long
+        lrA = sourceWS.Cells(sourceWS.Rows.Count, "A").End(xlUp).Row
+        lrB = sourceWS.Cells(sourceWS.Rows.Count, "B").End(xlUp).Row
+        lrC = sourceWS.Cells(sourceWS.Rows.Count, "C").End(xlUp).Row
+        lrD = sourceWS.Cells(sourceWS.Rows.Count, "D").End(xlUp).Row
+        
+        lastRowSource = Application.WorksheetFunction.Max(lrA, lrB, lrC, lrD)
+        
+        ' Agar data row 3 se pehle hai (yaani sirf headers hain), toh file ko skip kar de.
+        If lastRowSource < 3 Then GoTo NextFile
+
+        ' --- Headers ko sirf ek baar Copy Karein ---
+        If Not headersCopied Then
+            sourceWS.Range(sourceWS.Cells(2, 1), sourceWS.Cells(2, lastColSource)).Copy
+            destWS.Range("A1").PasteSpecial xlPasteValues
+            Application.CutCopyMode = False
+            headersCopied = True ' Flag ko True set kar dega taaki headers dobara copy na hon.
+        End If
+
+        ' --- Data ko Copy aur Paste Karein ---
+        ' Master file mein agli khaali row pata karega.
+        nextDestRow = destWS.Cells(destWS.Rows.Count, "A").End(xlUp).Row + 1
+        
+        ' Source file se data (Row 3 se aakhiri row tak) copy karega.
+        sourceWS.Range(sourceWS.Cells(3, 1), sourceWS.Cells(lastRowSource, lastColSource)).Copy
+        
+        ' Destination file mein data paste karega.
+        destWS.Cells(nextDestRow, 1).PasteSpecial xlPasteValues
+        Application.CutCopyMode = False
+
+NextFile:
+        ' Source workbook ko bina save kiye band kar dega.
+        sourceWB.Close SaveChanges:=False
+        
+        ' Agli file ke liye loop ko aage badhayega.
+        fileName = Dir
+    Loop
+
+    ' --- Final Touches ---
+    ' Master file ke columns ko data ke hisab se auto-fit karega.
+    destWS.Columns.AutoFit
+    
+    ' Screen updating ko wapas chalu kar dega.
+    Application.ScreenUpdating = True
+
+    ' Process complete hone ka message dega.
+    MsgBox "Sabhi files ka data safaltapoorvak consolidate ho gaya hai!", vbInformation
+
+End Sub

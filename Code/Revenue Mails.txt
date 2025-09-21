@@ -1,0 +1,441 @@
+' --- Code Start ---
+
+' #################################################################################
+' ##                                                                             ##
+' ##                 EXCEL TO OUTLOOK EMAIL AUTOMATION                           ##
+' ##                 VERSION 2.0 - DISPLAY BEFORE SENDING                        ##
+' ##                                                                             ##
+' ##   Instructions:                                                             ##
+' ##   1. Press Alt + F11 in Excel to open the VBA Editor.                       ##
+' ##   2. Go to Insert > Module and paste this code.                             ##
+' ##   3. Go to Tools > References and enable "Microsoft Outlook Object Library".##
+' ##   4. Change the sheet name in the code below if it's not "Sheet1".          ##
+' ##   5. Close the VBA editor and run the macro from Excel.                     ##
+' ##                                                                             ##
+' #################################################################################
+
+Option Explicit
+
+' =================================================================================
+' == MAIN SUBROUTINE TO SEND EMAILS
+' =================================================================================
+Sub SendMonthlyEmails()
+
+    ' --- Variable Declarations ---
+    Dim outlookApp As Outlook.Application
+    Dim outlookMail As Outlook.MailItem
+    Dim outlookNamespace As Outlook.Namespace
+    Dim sentFolder As Outlook.MAPIFolder
+    
+    Dim ws As Worksheet
+    Dim i As Long
+    Dim lastRow As Long
+    
+    Dim mailNumber As String
+    Dim replyBody As String
+    Dim searchSubject As String
+    
+    ' --- Error Handling ---
+    On Error GoTo ErrorHandler
+
+    ' --- Initial Setup ---
+    ' Yahan apni sheet ka naam daalein
+    Set ws = ThisWorkbook.Sheets("Sheet1")
+    
+    ' Outlook Application ko access karein
+    Set outlookApp = New Outlook.Application
+    Set outlookNamespace = outlookApp.GetNamespace("MAPI")
+    
+    ' --- User se poochein kaunsa mail bhejna hai ---
+    mailNumber = InputBox("Kaunsa mail bhejna hai? (1 se 6 tak number daalein):" & vbNewLine & vbNewLine & _
+                          "1. Pehla Mail (New)" & vbNewLine & _
+                          "2. Reminder 1" & vbNewLine & _
+                          "3. Final 1" & vbNewLine & _
+                          "4. Reminder 1 (Dobara)" & vbNewLine & _
+                          "5. Interim Forecast" & vbNewLine & _
+                          "6. Final 2", "Mail Bhejein")
+
+    ' Agar user ne cancel kar diya to macro band kar dein
+    If mailNumber = "" Then
+        MsgBox "Process cancelled by user.", vbInformation
+        Exit Sub
+    End If
+    
+    If Not IsNumeric(mailNumber) Or CInt(mailNumber) < 1 Or CInt(mailNumber) > 6 Then
+        MsgBox "Kripya 1 se 6 ke beech ka valid number daalein.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' --- Excel sheet ki aakhiri row pata karein ---
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    If lastRow < 2 Then
+        MsgBox "Sheet mein bhejne ke liye koi data nahi hai.", vbInformation
+        Exit Sub
+    End If
+
+    ' --- Har row ke liye loop chalayein ---
+    For i = 2 To lastRow
+        
+        ' Agar "To" column khaali hai to us row ko skip kar dein
+        If Trim(ws.Cells(i, "A").Value) = "" Then GoTo NextIteration
+
+        Select Case mailNumber
+            ' ===================================
+            ' == CASE 1: PEHLA MAIL (NEW MAIL) ==
+            ' ===================================
+            Case "1"
+                Set outlookMail = outlookApp.CreateItem(olMailItem)
+                
+                With outlookMail
+                    .To = ws.Cells(i, "A").Value ' To
+                    .CC = ws.Cells(i, "B").Value ' CC
+                    .Subject = ws.Cells(i, "C").Value & " " & ws.Cells(i, "D").Value ' Subject + Month
+                    .HTMLBody = "<p>" & ws.Cells(i, "E").Value & "</p>" & _
+                                "<p>Link: <a href='" & ws.Cells(i, "F").Value & "'>" & ws.Cells(i, "F").Value & "</a></p>" & _
+                                "<p>Till Date: " & ws.Cells(i, "G").Value & "</p>" & _
+                                .HTMLBody ' Signature ke liye
+                    
+                    ' CHANGE: Mail ko bhejne se pehle display karein
+                    .Display
+                    
+                    ' Mail ko seedha bhejne ke liye .Send use karein
+                    ' .Send
+                End With
+                Debug.Print "Row " & i & ": Pehla mail display kar diya gaya."
+
+            ' ==========================================
+            ' == CASE 2 to 6: PURANE MAIL PAR REPLY ALL ==
+            ' ==========================================
+            Case "2", "3", "4", "5", "6"
+                searchSubject = ws.Cells(i, "M").Value
+                If searchSubject = "" Then
+                    MsgBox "Row " & i & " mein 'Search Subject' khaali hai. Is row ko skip kiya ja raha hai.", vbExclamation
+                    GoTo NextIteration
+                End If
+                
+                ' Body content decide karein
+                Select Case mailNumber
+                    Case "2": replyBody = ws.Cells(i, "H").Value ' Reminder 1
+                    Case "3": replyBody = ws.Cells(i, "I").Value ' Final 1
+                    Case "4": replyBody = ws.Cells(i, "H").Value ' Reminder 1 (Dobara)
+                    Case "5": replyBody = ws.Cells(i, "J").Value ' Interim forecast
+                    Case "6": replyBody = ws.Cells(i, "L").Value ' Final 2
+                End Select
+                
+                ' Original mail ko dhoondein aur reply karein
+                Dim foundMail As Outlook.MailItem
+                Set foundMail = FindEmailBySubject(outlookApp, searchSubject)
+                
+                If Not foundMail Is Nothing Then
+                    Set outlookMail = foundMail.ReplyAll
+                    
+                    With outlookMail
+                        ' Nayi body ko purani body ke upar rakhein
+                        .HTMLBody = "<p>" & replyBody & "</p>" & .HTMLBody
+                        
+                        ' CHANGE: Mail ko bhejne se pehle display karein
+                        .Display
+                        
+                        ' Mail ko seedha bhejne ke liye .Send use karein
+                        ' .Send
+                    End With
+                    Debug.Print "Row " & i & ": Mail par reply display kar diya gaya. Subject: " & searchSubject
+                Else
+                    MsgBox "Row " & i & " ke liye original mail nahi mila. Kripya 'Search Subject' (" & searchSubject & ") check karein.", vbExclamation
+                End If
+        End Select
+        
+        ' Agli row par jaane se pehle objects ko saaf karein
+        Set outlookMail = Nothing
+NextIteration:
+    Next i
+    
+    MsgBox "Process poora ho gaya hai! Sabhi mails display kar diye gaye hain.", vbInformation
+    GoTo Cleanup
+
+' --- Error Handling Section ---
+ErrorHandler:
+    MsgBox "Ek error aayi hai!" & vbNewLine & _
+           "Error Number: " & Err.Number & vbNewLine & _
+           "Error Description: " & Err.Description, vbCritical
+    
+' --- Cleanup Section ---
+Cleanup:
+    Set outlookMail = Nothing
+    Set outlookNamespace = Nothing
+    Set outlookApp = Nothing
+    Set ws = Nothing
+
+End Sub
+
+' =================================================================================
+' == HELPER FUNCTION TO FIND THE ORIGINAL EMAIL IN SENT ITEMS
+' =================================================================================
+Private Function FindEmailBySubject(ByVal outlookApp As Outlook.Application, ByVal subjectToFind As String) As Outlook.MailItem
+
+    Dim sentFolder As Outlook.MAPIFolder
+    Dim mailItem As Object
+    Dim foundMail As Outlook.MailItem
+    Dim searchDate As Date
+    
+    On Error Resume Next
+    
+    Set foundMail = Nothing
+    
+    ' Sent Items folder ko access karein
+    Set sentFolder = outlookApp.GetNamespace("MAPI").GetDefaultFolder(olFolderSentMail)
+    
+    ' Pichhle 30 din ki date set karein
+    searchDate = Date - 30
+    
+    ' Sent items ko sort karein (sabse naya sabse upar)
+    sentFolder.Items.Sort "[SentOn]", True
+    
+    ' Har bheje gaye mail ko check karein
+    For Each mailItem In sentFolder.Items
+        ' Agar mail 30 din se purana hai to loop se bahar aa jayein
+        If mailItem.SentOn < searchDate Then
+            Exit For
+        End If
+        
+        ' Subject match karein. InStr substring dhoondhta hai, isliye "RE:" kaam karega.
+        If InStr(1, mailItem.Subject, subjectToFind, vbTextCompare) > 0 Then
+            Set foundMail = mailItem
+            Exit For ' Jaise hi sabse naya match mile, loop se bahar aa jayein
+        End If
+    Next mailItem
+    
+    ' Function ka result return karein
+    Set FindEmailBySubject = foundMail
+    
+    Set sentFolder = Nothing
+    Set mailItem = Nothing
+
+End Function
+
+' --- Code End ---
+
+
+
+
+
+
+
+
+
+
+
+New Code with button 
+
+
+' --- Code Start ---
+
+' #################################################################################
+' ##                                                                             ##
+' ##                 EXCEL TO OUTLOOK EMAIL AUTOMATION                           ##
+' ##                 VERSION 3.0 - USERFORM WITH BUTTONS                         ##
+' ##                                                                             ##
+' ##   Instructions:                                                             ##
+' ##   1. Is code ke saath ek UserForm (frmSelectMail) banana zaroori hai.       ##
+' ##      Instructions neeche di gayi hain.                                      ##
+' ##   2. Press Alt + F11 in Excel to open the VBA Editor.                       ##
+' ##   3. Go to Insert > Module and paste this code.                             ##
+' ##   4. Go to Tools > References and enable "Microsoft Outlook Object Library".##
+' ##   5. Change the sheet name in the code below if it's not "Sheet1".          ##
+' ##                                                                             ##
+' #################################################################################
+
+Option Explicit
+
+' Global variable to hold the choice from the form
+Public g_mailChoice As String
+
+' =================================================================================
+' == MAIN SUBROUTINE TO SEND EMAILS
+' =================================================================================
+Sub SendMonthlyEmails()
+
+    ' --- Variable Declarations ---
+    Dim outlookApp As Outlook.Application
+    Dim outlookMail As Outlook.MailItem
+    Dim outlookNamespace As Outlook.Namespace
+    Dim sentFolder As Outlook.MAPIFolder
+    
+    Dim ws As Worksheet
+    Dim i As Long
+    Dim lastRow As Long
+    
+    Dim mailNumber As String
+    Dim replyBody As String
+    Dim searchSubject As String
+    
+    ' --- Error Handling ---
+    On Error GoTo ErrorHandler
+
+    ' --- Initial Setup ---
+    ' Yahan apni sheet ka naam daalein
+    Set ws = ThisWorkbook.Sheets("Sheet1")
+    
+    ' Outlook Application ko access karein
+    Set outlookApp = New Outlook.Application
+    Set outlookNamespace = outlookApp.GetNamespace("MAPI")
+    
+    ' --- Custom form dikhayein aur user ka input lein ---
+    g_mailChoice = "" ' Purani choice ko reset karein
+    frmSelectMail.Show
+    
+    mailNumber = g_mailChoice
+
+    ' Agar user ne cancel kar diya ya form band kar diya to macro band kar dein
+    If mailNumber = "" Or mailNumber = "Cancel" Then
+        MsgBox "Process cancelled by user.", vbInformation
+        Exit Sub
+    End If
+    
+    ' --- Excel sheet ki aakhiri row pata karein ---
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    If lastRow < 2 Then
+        MsgBox "Sheet mein bhejne ke liye koi data nahi hai.", vbInformation
+        Exit Sub
+    End If
+
+    ' --- Har row ke liye loop chalayein ---
+    For i = 2 To lastRow
+        
+        ' Agar "To" column khaali hai to us row ko skip kar dein
+        If Trim(ws.Cells(i, "A").Value) = "" Then GoTo NextIteration
+
+        Select Case mailNumber
+            ' ===================================
+            ' == CASE 1: PEHLA MAIL (NEW MAIL) ==
+            ' ===================================
+            Case "1"
+                Set outlookMail = outlookApp.CreateItem(olMailItem)
+                
+                With outlookMail
+                    .To = ws.Cells(i, "A").Value ' To
+                    .CC = ws.Cells(i, "B").Value ' CC
+                    .Subject = ws.Cells(i, "C").Value & " " & ws.Cells(i, "D").Value ' Subject + Month
+                    .HTMLBody = "<p>" & ws.Cells(i, "E").Value & "</p>" & _
+                                "<p>Link: <a href='" & ws.Cells(i, "F").Value & "'>" & ws.Cells(i, "F").Value & "</a></p>" & _
+                                "<p>Till Date: " & ws.Cells(i, "G").Value & "</p>" & _
+                                .HTMLBody ' Signature ke liye
+                    
+                    ' CHANGE: Mail ko bhejne se pehle display karein
+                    .Display
+                    
+                End With
+                Debug.Print "Row " & i & ": Pehla mail display kar diya gaya."
+
+            ' ==========================================
+            ' == CASE 2 to 6: PURANE MAIL PAR REPLY ALL ==
+            ' ==========================================
+            Case "2", "3", "4", "5", "6"
+                searchSubject = ws.Cells(i, "M").Value
+                If searchSubject = "" Then
+                    MsgBox "Row " & i & " mein 'Search Subject' khaali hai. Is row ko skip kiya ja raha hai.", vbExclamation
+                    GoTo NextIteration
+                End If
+                
+                ' Body content decide karein
+                Select Case mailNumber
+                    Case "2": replyBody = ws.Cells(i, "H").Value ' Reminder 1
+                    Case "3": replyBody = ws.Cells(i, "I").Value ' Final 1
+                    Case "4": replyBody = ws.Cells(i, "H").Value ' Reminder 1 (Dobara)
+                    Case "5": replyBody = ws.Cells(i, "J").Value ' Interim forecast
+                    Case "6": replyBody = ws.Cells(i, "L").Value ' Final 2
+                End Select
+                
+                ' Original mail ko dhoondein aur reply karein
+                Dim foundMail As Outlook.MailItem
+                Set foundMail = FindEmailBySubject(outlookApp, searchSubject)
+                
+                If Not foundMail Is Nothing Then
+                    Set outlookMail = foundMail.ReplyAll
+                    
+                    With outlookMail
+                        ' Nayi body ko purani body ke upar rakhein
+                        .HTMLBody = "<p>" & replyBody & "</p>" & .HTMLBody
+                        
+                        ' CHANGE: Mail ko bhejne se pehle display karein
+                        .Display
+
+                    End With
+                    Debug.Print "Row " & i & ": Mail par reply display kar diya gaya. Subject: " & searchSubject
+                Else
+                    MsgBox "Row " & i & " ke liye original mail nahi mila. Kripya 'Search Subject' (" & searchSubject & ") check karein.", vbExclamation
+                End If
+        End Select
+        
+        ' Agli row par jaane se pehle objects ko saaf karein
+        Set outlookMail = Nothing
+NextIteration:
+    Next i
+    
+    MsgBox "Process poora ho gaya hai! Sabhi mails display kar diye gaye hain.", vbInformation
+    GoTo Cleanup
+
+' --- Error Handling Section ---
+ErrorHandler:
+    MsgBox "Ek error aayi hai!" & vbNewLine & _
+           "Error Number: " & Err.Number & vbNewLine & _
+           "Error Description: " & Err.Description, vbCritical
+    
+' --- Cleanup Section ---
+Cleanup:
+    Set outlookMail = Nothing
+    Set outlookNamespace = Nothing
+    Set outlookApp = Nothing
+    Set ws = Nothing
+
+End Sub
+
+' =================================================================================
+' == HELPER FUNCTION TO FIND THE ORIGINAL EMAIL IN SENT ITEMS
+' =================================================================================
+Private Function FindEmailBySubject(ByVal outlookApp As Outlook.Application, ByVal subjectToFind As String) As Outlook.MailItem
+
+    Dim sentFolder As Outlook.MAPIFolder
+    Dim mailItem As Object
+    Dim foundMail As Outlook.MailItem
+    Dim searchDate As Date
+    
+    On Error Resume Next
+    
+    Set foundMail = Nothing
+    
+    ' Sent Items folder ko access karein
+    Set sentFolder = outlookApp.GetNamespace("MAPI").GetDefaultFolder(olFolderSentMail)
+    
+    ' Pichhle 30 din ki date set karein
+    searchDate = Date - 30
+    
+    ' Sent items ko sort karein (sabse naya sabse upar)
+    sentFolder.Items.Sort "[SentOn]", True
+    
+    ' Har bheje gaye mail ko check karein
+    For Each mailItem In sentFolder.Items
+        ' Agar mail 30 din se purana hai to loop se bahar aa jayein
+        If mailItem.SentOn < searchDate Then
+            Exit For
+        End If
+        
+        ' Subject match karein. InStr substring dhoondhta hai, isliye "RE:" kaam karega.
+        If InStr(1, mailItem.Subject, subjectToFind, vbTextCompare) > 0 Then
+            Set foundMail = mailItem
+            Exit For ' Jaise hi sabse naya match mile, loop se bahar aa jayein
+        End If
+    Next mailItem
+    
+    ' Function ka result return karein
+    Set FindEmailBySubject = foundMail
+    
+    Set sentFolder = Nothing
+    Set mailItem = Nothing
+
+End Function
+
+' --- Code End ---
+
