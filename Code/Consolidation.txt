@@ -108,3 +108,102 @@ NextFile:
     MsgBox "Sabhi files ka data safaltapoorvak consolidate ho gaya hai!", vbInformation
 
 End Sub
+
+
+
+
+Sub ConsolidateExcelFiles()
+
+    ' --- Variables Declaration ---
+    ' Yeh section zaroori variables ko declare karta hai.
+    Dim folderPath As String
+    Dim fileName As String
+    Dim sourceWB As Workbook
+    Dim sourceWS As Worksheet
+    Dim destWB As Workbook
+    Dim destWS As Worksheet
+    Dim lastRowSource As Long
+    Dim lastColSource As Long
+    Dim nextDestRow As Long
+    Dim headersCopied As Boolean
+    Dim fileDialog As FileDialog
+    Dim lrA As Long, lrB As Long, lrC As Long, lrD As Long
+
+    ' --- User se Folder Select Karwayein ---
+    Set fileDialog = Application.FileDialog(msoFileDialogFolderPicker)
+    fileDialog.Title = "Select the folder containing Excel files to consolidate"
+
+    If fileDialog.Show = -1 Then
+        folderPath = fileDialog.SelectedItems(1) & "\"
+    Else
+        MsgBox "Operation Cancelled by user."
+        Exit Sub ' Agar user cancel kare toh macro band ho jayega
+    End If
+
+    ' --- Screen Updates ko Rokein aur Nayi Workbook Banayein ---
+    Application.ScreenUpdating = False
+    Set destWB = Workbooks.Add
+    Set destWS = destWB.Sheets(1)
+    destWS.Name = "Consolidated Data"
+    headersCopied = False
+    nextDestRow = 1 ' Shuruaat 1 se
+
+    ' --- Folder ki Sabhi Excel Files par Loop Chalayein ---
+    fileName = Dir(folderPath & "*.xls*") ' .xls, .xlsx, .xlsm, etc. sabhi files lega
+
+    Do While fileName <> ""
+        ' File ko ReadOnly mode mein kholein taaki protected files handle ho sakein
+        Set sourceWB = Workbooks.Open(folderPath & fileName, ReadOnly:=True)
+        Set sourceWS = sourceWB.Sheets(1)
+
+        ' --- Filter Handling ---
+        ' Agar file mein filter laga ho toh use clear karein taaki saara data copy ho
+        If sourceWS.AutoFilterMode Then
+            sourceWS.ShowAllData
+        End If
+
+        ' --- Last Row aur Last Column Pata Karein (Dynamic Logic) ---
+        If sourceWS.Cells(2, 1) <> "" Then ' Pehle check karein ki header row khali toh nahi
+            ' Last Column (Row 2 ke basis par)
+            lastColSource = sourceWS.Cells(2, sourceWS.Columns.Count).End(xlToLeft).Column
+
+            ' Last Row (Column A, B, C, D ke basis par)
+            lrA = sourceWS.Cells(sourceWS.Rows.Count, "A").End(xlUp).Row
+            lrB = sourceWS.Cells(sourceWS.Rows.Count, "B").End(xlUp).Row
+            lrC = sourceWS.Cells(sourceWS.Rows.Count, "C").End(xlUp).Row
+            lrD = sourceWS.Cells(sourceWS.Rows.Count, "D").End(xlUp).Row
+            lastRowSource = Application.WorksheetFunction.Max(lrA, lrB, lrC, lrD)
+
+            ' Agar 2 se zyada rows hain (header ke alawa data hai) tabhi process karein
+            If lastRowSource > 2 Then
+                ' --- Headers ko sirf ek baar Copy Karein ---
+                If Not headersCopied Then
+                    sourceWS.Range(sourceWS.Cells(2, 1), sourceWS.Cells(2, lastColSource)).Copy
+                    destWS.Range("A1").PasteSpecial xlPasteValues
+                    Application.CutCopyMode = False
+                    headersCopied = True
+                End If
+
+                ' --- Data ko Copy aur Paste Karein ---
+                ' Agli khaali row pata karein destination sheet mein
+                nextDestRow = destWS.Cells(destWS.Rows.Count, "A").End(xlUp).Row + 1
+                
+                sourceWS.Range(sourceWS.Cells(3, 1), sourceWS.Cells(lastRowSource, lastColSource)).Copy
+                destWS.Cells(nextDestRow, 1).PasteSpecial xlPasteValues
+                Application.CutCopyMode = False
+            End If
+        End If
+
+NextFile:
+        sourceWB.Close SaveChanges:=False
+        fileName = Dir
+    Loop
+
+    ' --- Final Touches ---
+    If headersCopied Then ' Agar koi data copy hua hai tabhi AutoFit karein
+        destWS.Columns.AutoFit
+    End If
+    Application.ScreenUpdating = True
+
+    MsgBox "Consolidation Complete! All files have been processed.", vbInformation
+End Sub
