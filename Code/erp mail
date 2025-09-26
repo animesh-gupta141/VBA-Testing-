@@ -110,3 +110,110 @@ Private Function ExtractData(ByVal sourceText As String, ByVal startDelimiter As
         ExtractData = "Not Found"
     End If
 End Function
+
+
+
+
+
+
+Option Explicit
+
+Sub ParseDealMails()
+    Dim OutlookApp As Object
+    Dim OutlookNs As Object
+    Dim Inbox As Object
+    Dim Items As Object
+    Dim Mail As Object
+    Dim i As Long, RowNum As Long
+    Dim DealID As String, Probability As String
+    Dim ClientName As String, DealName As String
+    Dim LOB As String, PMName As String
+    Dim OppID As String
+    Dim SubjectText As String, BodyText As String
+    Dim FilterHours As Double
+    Dim MailDate As Date
+    
+    ' ===== User settings =====
+    Const SenderAddress As String = "erp@example.com"
+    FilterHours = 4    ' Change this for how many hours back
+    
+    ' ===== Initialize Outlook =====
+    On Error Resume Next
+    Set OutlookApp = GetObject(, "Outlook.Application")
+    If OutlookApp Is Nothing Then
+        Set OutlookApp = CreateObject("Outlook.Application")
+    End If
+    On Error GoTo 0
+    
+    Set OutlookNs = OutlookApp.GetNamespace("MAPI")
+    Set Inbox = OutlookNs.GetDefaultFolder(6) ' 6 = Inbox
+    Set Items = Inbox.Items
+    Items.Sort "ReceivedTime", True
+    
+    ' ===== Find next empty row =====
+    With ThisWorkbook.Sheets("Sheet1")
+        RowNum = .Cells(.Rows.Count, 1).End(xlUp).Row + 1
+    End With
+    
+    ' ===== Loop mails =====
+    For i = Items.Count To 1 Step -1
+        Set Mail = Items(i)
+        If Mail.Class = 43 Then ' Only mail items
+            MailDate = Mail.ReceivedTime
+            
+            If MailDate >= Now - (FilterHours / 24) Then
+                If LCase(Mail.SenderEmailAddress) Like "*" & LCase(SenderAddress) & "*" Then
+                    SubjectText = Mail.Subject
+                    BodyText = Mail.Body
+                    
+                    ' ==== Parse fields ====
+                    DealID = ExtractBetween(BodyText, "Deal ID", vbCrLf)
+                    Probability = ExtractBetween(SubjectText, "with probability", "")
+                    If Probability = "" Then Probability = ExtractBetween(SubjectText, "with a", "probability")
+                    ClientName = ExtractBetween(SubjectText, "proposal for", "for")
+                    DealName = ExtractBetween(SubjectText, "project titled", "")
+                    LOB = ExtractBetween(BodyText, "has been allocated to", ".")
+                    PMName = ExtractBetween(BodyText, LOB & " ", " is managing the project")
+                    OppID = ExtractBetween(BodyText, "Oppotunity ID", vbCrLf)
+                    
+                    ' ==== Write to Excel ====
+                    With ThisWorkbook.Sheets("Sheet1")
+                        .Cells(RowNum, 1).Value = MailDate
+                        .Cells(RowNum, 2).Value = Trim(DealID)
+                        .Cells(RowNum, 3).Value = Trim(Probability)
+                        .Cells(RowNum, 4).Value = Trim(ClientName)
+                        .Cells(RowNum, 5).Value = Trim(DealName)
+                        .Cells(RowNum, 6).Value = Trim(LOB)
+                        .Cells(RowNum, 7).Value = Trim(PMName)
+                        .Cells(RowNum, 8).Value = Trim(OppID)
+                    End With
+                    RowNum = RowNum + 1
+                End If
+            Else
+                Exit For ' Older than required hours
+            End If
+        End If
+    Next i
+    
+    MsgBox "Parsing complete. Data appended till row " & (RowNum - 1)
+End Sub
+
+Private Function ExtractBetween(ByVal Text As String, ByVal StartWord As String, ByVal EndWord As String) As String
+    Dim StartPos As Long, EndPos As Long
+    StartPos = InStr(1, Text, StartWord, vbTextCompare)
+    If StartPos > 0 Then
+        StartPos = StartPos + Len(StartWord)
+        If EndWord <> "" Then
+            EndPos = InStr(StartPos, Text, EndWord, vbTextCompare)
+            If EndPos > 0 Then
+                ExtractBetween = Mid(Text, StartPos, EndPos - StartPos)
+            Else
+                ExtractBetween = Mid(Text, StartPos)
+            End If
+        Else
+            ExtractBetween = Mid(Text, StartPos)
+        End If
+    Else
+        ExtractBetween = ""
+    End If
+End Function
