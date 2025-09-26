@@ -1,0 +1,112 @@
+' Subroutine to launch the UserForm from an Excel button
+Public Sub ShowExtractorForm()
+    ' Make sure your UserForm is named UserForm1 or change the name here
+    UserForm1.Show
+End Sub
+
+' Main Subroutine called from the UserForm to process emails
+Public Sub ParseOutlookEmails(ByVal hoursBack As Integer)
+
+    ' --- Variable Declarations ---
+    Dim olApp As Object 'Outlook.Application
+    Dim olNamespace As Object 'Outlook.Namespace
+    Dim olFolder As Object 'Outlook.MAPIFolder
+    Dim olMail As Object
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim filterTime As Date
+    Dim mailCount As Integer
+
+    ' --- Setup ---
+    Set ws = ThisWorkbook.Sheets("Email Data")
+    mailCount = 0
+    
+    ' Clear previous data but keep headers
+    ws.Rows("2:" & ws.Rows.Count).ClearContents
+    lastRow = 2 ' Start populating data from row 2
+    
+    ' Calculate the cutoff time for email search
+    filterTime = DateAdd("h", -hoursBack, Now)
+
+    ' --- Connect to Outlook ---
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then
+        Set olApp = CreateObject("Outlook.Application")
+    End If
+    On Error GoTo 0
+    
+    If olApp Is Nothing Then
+        MsgBox "Outlook is not running. Please open Outlook and try again.", vbCritical, "Outlook Connection Error"
+        Exit Sub
+    End If
+    
+    Set olNamespace = olApp.GetNamespace("MAPI")
+    Set olFolder = olNamespace.GetDefaultFolder(6) ' 6 corresponds to the Inbox folder
+
+    ' --- Loop Through Emails and Extract Data ---
+    For Each olMail In olFolder.Items
+        ' Apply filters: Time, Sender, and Subject
+        If olMail.ReceivedTime >= filterTime Then
+            If LCase(olMail.SenderEmailAddress) = "erp@example.com" And olMail.Subject Like "Deal * with probability *" Then
+                
+                ' Extract data using the helper function
+                Dim dealID As String, probability As String, clientName As String
+                Dim dealName As String, lob As String, pmName As String, oppID As String
+                
+                dealID = ExtractData(olMail.Body, "Deal ID", vbCrLf)
+                probability = ExtractData(olMail.Body, "with a ", " probability")
+                clientName = ExtractData(olMail.Subject, "proposal for ", " for ")
+                dealName = Trim(Mid(olMail.Subject, InStr(1, olMail.Subject, "project titled", vbTextCompare) + Len("project titled")))
+                lob = ExtractData(olMail.Body, "has been allocated to ", ".")
+                pmName = ExtractData(olMail.Body, lob & ". ", " is managing the project.")
+                oppID = ExtractData(olMail.Body, "Oppotunity ID", vbCrLf)
+                
+                ' Write data to the Excel sheet
+                ws.Cells(lastRow, 1).Value = dealID
+                ws.Cells(lastRow, 2).Value = probability
+                ws.Cells(lastRow, 3).Value = clientName
+                ws.Cells(lastRow, 4).Value = dealName
+                ws.Cells(lastRow, 5).Value = lob
+                ws.Cells(lastRow, 6).Value = pmName
+                ws.Cells(lastRow, 7).Value = oppID
+                
+                lastRow = lastRow + 1
+                mailCount = mailCount + 1
+            End If
+        End If
+    Next olMail
+
+    ' --- Cleanup and Final Message ---
+    Set olMail = Nothing
+    Set olFolder = Nothing
+    Set olNamespace = Nothing
+    Set olApp = Nothing
+    
+    MsgBox mailCount & " new deals have been successfully extracted and added to the sheet.", vbInformation, "Extraction Complete"
+
+End Sub
+
+' Helper function to extract text between two strings
+Private Function ExtractData(ByVal sourceText As String, ByVal startDelimiter As String, ByVal endDelimiter As String) As String
+    Dim posStart As Long, posEnd As Long
+    
+    ' Find the starting position of the text
+    posStart = InStr(1, sourceText, startDelimiter, vbTextCompare)
+    
+    If posStart > 0 Then
+        ' Find the ending position of the text, starting after the startDelimiter
+        posEnd = InStr(posStart + Len(startDelimiter), sourceText, endDelimiter, vbTextCompare)
+        
+        If posEnd > 0 Then
+            ' If both delimiters are found, extract the text between them
+            ExtractData = Trim(Mid(sourceText, posStart + Len(startDelimiter), posEnd - (posStart + Len(startDelimiter))))
+        Else 
+            ' Handles cases where the end delimiter is a newline or end of text
+            ExtractData = Trim(Mid(sourceText, posStart + Len(startDelimiter)))
+        End If
+    Else
+        ' If the start delimiter isn't found, return an error message
+        ExtractData = "Not Found"
+    End If
+End Function
