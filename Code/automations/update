@@ -38,10 +38,10 @@ With keyShape.TextFrame.TextRange.Font
     .Name = "Arial"
     .Size = 10
     .Bold = False
-    .Color.RGB = RGB(0, 0, 0)  ' normal text black
+    .Color.RGB = RGB(0, 0, 0)  ' regular text in black
 End With
 
-' === Highlight and bold date tokens (DD MMM YYYY:) ===
+' === Highlight, capitalize, and bold date tokens (DD MMM YYYY:) ===
 Set regex = CreateObject("VBScript.RegExp")
 With regex
     .Global = True
@@ -49,20 +49,27 @@ With regex
     .Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
 End With
 
+Dim tr As Object, matches As Object, m As Object
 Set tr = keyShape.TextFrame.TextRange
 Set matches = regex.Execute(tr.Text)
 
 If matches.Count > 0 Then
-    ' Read the color from the first character (keeps your PPT's built-in color)
+    ' Capture the existing color of the first text character (usually theme blue)
     Dim dateColor As Long
     dateColor = tr.Characters(1, 1).Font.Color.RGB
 
+    Dim dateText As String
     For Each m In matches
-        With tr.Characters(m.FirstIndex + 1, Len(m.Value)).Font
+        ' Convert date text to uppercase
+        dateText = UCase$(m.Value)
+        tr.Characters(m.FirstIndex + 1, Len(m.Value)).Text = dateText
+
+        ' Apply font styling for the date
+        With tr.Characters(m.FirstIndex + 1, Len(dateText)).Font
             .Bold = True
             .Name = "Arial"
             .Size = 10
-            .Color.RGB = dateColor  ' keeps existing PPT color (blue, etc.)
+            .Color.RGB = dateColor  ' keep existing PPT theme color
         End With
     Next m
 End If
