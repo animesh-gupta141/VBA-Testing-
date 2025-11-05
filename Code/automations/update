@@ -73,3 +73,51 @@ If matches.Count > 0 Then
         End With
     Next m
 End If
+
+
+
+
+' === Step: Apply formatting to "Key Management" section ===
+Dim keyShape As Object
+Set keyShape = sld.Shapes("txt_KeyManagement")
+
+' Base formatting for the entire text
+With keyShape.TextFrame.TextRange.Font
+    .Name = "Arial"
+    .Size = 10
+    .Bold = False
+    .Color.RGB = RGB(0, 0, 0)  ' normal text black
+End With
+
+' === Highlight, capitalize, and bold date tokens (DD MMM YYYY:) ===
+Set regex = CreateObject("VBScript.RegExp")
+With regex
+    .Global = True
+    .IgnoreCase = False
+    .Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
+End With
+
+' reuse existing tr variable already declared in the main macro
+Set tr = keyShape.TextFrame.TextRange
+Set matches = regex.Execute(tr.Text)
+
+If matches.Count > 0 Then
+    ' Capture existing color from PPT (first char = theme color)
+    Dim dateColor As Long
+    dateColor = tr.Characters(1, 1).Font.Color.RGB
+
+    Dim dateText As String
+    For Each m In matches
+        ' Convert date to uppercase
+        dateText = UCase$(m.Value)
+        tr.Characters(m.FirstIndex + 1, Len(m.Value)).Text = dateText
+
+        ' Apply date formatting
+        With tr.Characters(m.FirstIndex + 1, Len(dateText)).Font
+            .Bold = True
+            .Name = "Arial"
+            .Size = 10
+            .Color.RGB = dateColor
+        End With
+    Next m
+End If
