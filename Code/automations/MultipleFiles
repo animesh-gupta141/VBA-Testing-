@@ -1,0 +1,179 @@
+Sub PopulateFormattedFromExcel_Batch()
+    Dim excelApp As Object, wb As Object, ws As Object
+    Dim sld As Object, tbl As Object, newPres As Presentation
+    Dim folderPath As String, fileName As String, pptName As String
+    Dim i As Long, j As Long, minRows As Long, minCols As Long
+    Dim txt As String, outText As String
+    Dim regex As Object, matches As Object, m As Object
+    Dim tr As Object, rng As Object
+    Dim refFontName As String, refFontSize As Single, refFontColor As Long
+
+    ' === Ask user to pick the folder containing Excel files ===
+    With Application.FileDialog(msoFileDialogFolderPicker)
+        .Title = "Select Folder containing Excel Files"
+        If .Show <> -1 Then Exit Sub
+        folderPath = .SelectedItems(1)
+    End With
+    If Right(folderPath, 1) <> "\" Then folderPath = folderPath & "\"
+
+    ' === Create Excel instance ===
+    On Error Resume Next
+    Set excelApp = GetObject(Class:="Excel.Application")
+    If excelApp Is Nothing Then Set excelApp = CreateObject("Excel.Application")
+    On Error GoTo 0
+    excelApp.Visible = False
+
+    ' === Loop through all Excel files ===
+    fileName = Dir(folderPath & "*.xls*")
+    Do While fileName <> ""
+        Debug.Print "Processing: " & fileName
+
+        ' Open workbook and sheet
+        Set wb = excelApp.Workbooks.Open(folderPath & fileName)
+        On Error Resume Next
+        Set ws = wb.Sheets("Dashboard")
+        On Error GoTo 0
+        If ws Is Nothing Then
+            wb.Close SaveChanges:=False
+            fileName = Dir()
+            GoTo NextFile
+        End If
+
+        ' Duplicate current presentation slide for each Excel
+        ActivePresentation.Slides(1).Copy
+        Set newPres = Presentations.Add
+        newPres.Slides.Paste (1)
+        Set sld = newPres.Slides(1)
+
+        ' =====================================
+        ' Step 1 — Clear existing text
+        ' =====================================
+        On Error Resume Next
+        sld.Shapes("CompanyOverview").TextFrame.TextRange.Text = ""
+        sld.Shapes("KeyDevelopments").TextFrame.TextRange.Text = ""
+        sld.Shapes("KeyManagements").TextFrame.TextRange.Text = ""
+        sld.Shapes("CompanyName").TextFrame.TextRange.Text = ""
+        On Error GoTo 0
+
+        ' =====================================
+        ' Step 2 — Company Overview (B3)
+        ' =====================================
+        txt = CStr(ws.Range("B3").Value)
+        outText = BuildBulletsFromHyphens(txt)
+        ApplyBulletedText_Simple sld.Shapes("CompanyOverview"), outText
+
+        ' =====================================
+        ' Step 3 — Key Developments (C3)
+        ' =====================================
+        txt = CStr(ws.Range("C3").Value)
+        outText = BuildKeyDevBullets(txt)
+        ApplyBulletedText_Simple sld.Shapes("KeyDevelopments"), outText
+
+        ' === Highlight, capitalize, and bold date tokens ===
+        Set regex = CreateObject("VBScript.RegExp")
+        With regex
+            .Global = True
+            .IgnoreCase = False
+            .Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
+        End With
+        Set tr = sld.Shapes("KeyDevelopments").TextFrame.TextRange
+        Set matches = regex.Execute(tr.Text)
+
+        If matches.Count > 0 Then
+            For Each m In matches
+                Dim dateText As String
+                dateText = UCase$(m.Value)
+                tr.Characters(m.FirstIndex + 1, Len(m.Value)).Text = dateText
+
+                With tr.Characters(m.FirstIndex + 1, Len(dateText)).Font
+                    .Bold = True
+                    .Name = "Arial"
+                    .Size = 10
+                    .Color.RGB = RGB(49, 134, 155) ' Turquoise Accent 3
+                End With
+            Next m
+        End If
+
+        ' =====================================
+        ' Step 4 — Key Managements (D3)
+        ' =====================================
+        txt = CStr(ws.Range("D3").Value)
+        outText = BuildOwnershipBullets(txt)
+        ApplyBulletedText_Simple sld.Shapes("KeyManagements"), outText
+
+        ' =====================================
+        ' Step 5 — Financials Table (C7:E16)
+        ' =====================================
+        On Error Resume Next
+        Set tbl = sld.Shapes("Table_keyFinance").Table
+        On Error GoTo 0
+        If Not tbl Is Nothing Then
+            Set rng = ws.Range("C7:E16")
+
+            minRows = MinLong(tbl.Rows.Count, rng.Rows.Count)
+            minCols = MinLong(tbl.Columns.Count - 1, rng.Columns.Count) ' skip PPT col 1
+
+            ' Capture reference font from table
+            On Error Resume Next
+            With tbl.Cell(1, 1).Shape.TextFrame.TextRange.Font
+                refFontName = .Name
+                refFontSize = .Size
+                refFontColor = .Color.RGB
+            End With
+            On Error GoTo 0
+
+            If Len(refFontName) = 0 Then refFontName = "Calibri"
+            If refFontSize = 0 Then refFontSize = 11
+            If refFontColor = 0 Then refFontColor = RGB(0, 0, 0)
+
+            ' Clear old data
+            For i = 1 To minRows
+                For j = 2 To minCols + 1
+                    tbl.Cell(i, j).Shape.TextFrame.TextRange.Text = ""
+                Next j
+            Next i
+
+            ' Populate table
+            For i = 1 To minRows
+                For j = 1 To minCols
+                    tbl.Cell(i, j + 1).Shape.TextFrame.TextRange.Text = CStr(rng.Cells(i, j).Text)
+                    With tbl.Cell(i, j + 1).Shape.TextFrame.TextRange.Font
+                        .Name = refFontName
+                        .Size = refFontSize
+                        If i > 1 And refFontColor = RGB(255, 255, 255) Then
+                            .Color.RGB = RGB(0, 0, 0)
+                        Else
+                            .Color.RGB = refFontColor
+                        End If
+                    End With
+                Next j
+            Next i
+        End If
+
+        ' =====================================
+        ' Step 6 — Company Name (C22)
+        ' =====================================
+        txt = CStr(ws.Range("C22").Value)
+        sld.Shapes("CompanyName").TextFrame.TextRange.Text = Trim$(txt)
+        With sld.Shapes("CompanyName").TextFrame.TextRange.Font
+            .Name = "Calibri"
+            .Size = 20
+            .Bold = True
+        End With
+
+        ' === Save PPT ===
+        pptName = folderPath & Replace(fileName, ".xlsx", ".pptx")
+        newPres.SaveAs pptName
+        newPres.Close
+
+NextFile:
+        wb.Close SaveChanges:=False
+        Set ws = Nothing
+        fileName = Dir()
+    Loop
+
+    excelApp.Quit
+    Set excelApp = Nothing
+
+    MsgBox "All PowerPoints created successfully in: " & folderPath, vbInformation
+End Sub
