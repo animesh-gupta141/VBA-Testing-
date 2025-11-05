@@ -27,3 +27,42 @@ Private Function BuildBulletsFromHyphens(ByVal s As String) As String
 
     BuildBulletsFromHyphens = Trim$(outText)
 End Function
+
+
+' === Step: Apply formatting to "Key Management" section ===
+Dim keyShape As Object
+Set keyShape = sld.Shapes("txt_KeyManagement")
+
+' Set base formatting for the entire text (Arial 10pt, normal)
+With keyShape.TextFrame.TextRange.Font
+    .Name = "Arial"
+    .Size = 10
+    .Bold = False
+    .Color.RGB = RGB(0, 0, 0)  ' normal text black
+End With
+
+' === Highlight and bold date tokens (DD MMM YYYY:) ===
+Set regex = CreateObject("VBScript.RegExp")
+With regex
+    .Global = True
+    .IgnoreCase = False
+    .Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
+End With
+
+Set tr = keyShape.TextFrame.TextRange
+Set matches = regex.Execute(tr.Text)
+
+If matches.Count > 0 Then
+    ' Read the color from the first character (keeps your PPT's built-in color)
+    Dim dateColor As Long
+    dateColor = tr.Characters(1, 1).Font.Color.RGB
+
+    For Each m In matches
+        With tr.Characters(m.FirstIndex + 1, Len(m.Value)).Font
+            .Bold = True
+            .Name = "Arial"
+            .Size = 10
+            .Color.RGB = dateColor  ' keeps existing PPT color (blue, etc.)
+        End With
+    Next m
+End If
