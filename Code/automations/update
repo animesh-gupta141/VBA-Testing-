@@ -1,0 +1,29 @@
+Private Function BuildBulletsFromHyphens(ByVal s As String) As String
+    Dim parts As Variant, p As Variant, outText As String
+    Dim cleaned As String
+
+    ' Clean line breaks and double spaces
+    cleaned = Replace(s, vbCrLf, " ")
+    cleaned = Replace(cleaned, vbCr, " ")
+    cleaned = Replace(cleaned, vbLf, " ")
+    cleaned = Trim$(cleaned)
+
+    ' ✅ Split only on a hyphen followed by a space ("- ")
+    parts = Split(cleaned, "- ")
+
+    ' Loop through each part — only use as bullet if it’s a full new item
+    For Each p In parts
+        If Len(Trim$(p)) > 0 Then
+            ' Skip leading fragments that come before the first "- "
+            If Left$(cleaned, 2) <> "- " And InStr(cleaned, "- ") = 0 Then
+                ' no bullets if there were no "- " separators at all
+                outText = cleaned
+                Exit For
+            Else
+                outText = outText & Trim$(p) & vbCrLf
+            End If
+        End If
+    Next p
+
+    BuildBulletsFromHyphens = Trim$(outText)
+End Function
