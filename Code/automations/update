@@ -90,3 +90,63 @@ If matches.Count > 0 Then
         End If
     Next m
 End If
+
+
+-----------------------------------------------------------------------------------------------------------
+
+Private Function BuildOwnershipBullets(ByVal s As String) As String
+    Dim tmp As String, lines As Variant, ln As Variant
+    Dim nameStr As String, titleStr As String, outText As String
+    Dim parts As Variant
+
+    ' === Step 1: Clean unwanted characters ===
+    s = Trim$(s)
+
+    ' Remove leading/trailing single quotes if present
+    If Left$(s, 1) = "'" Then s = Mid$(s, 2)
+    If Right$(s, 1) = "'" Then s = Left$(s, Len(s) - 1)
+
+    ' Replace double quotes, normalize line breaks
+    s = Replace(s, """", "")
+    s = Replace(s, vbCrLf, vbLf)
+    s = Replace(s, vbCr, vbLf)
+
+    ' === Step 2: Split by lines (each one is a bullet) ===
+    lines = Split(s, vbLf)
+
+    ' === Step 3: Loop through lines and reformat ===
+    For Each ln In lines
+        ln = Trim$(ln)
+        If Len(ln) = 0 Then GoTo NextLine
+
+        ' Remove starting dash (- or –) if present
+        If Left$(ln, 1) = "-" Or Left$(ln, 1) = "–" Then
+            ln = Trim$(Mid$(ln, 2))
+        End If
+
+        ' Split on first dash/en-dash between name and title
+        If InStr(ln, "–") > 0 Then
+            parts = Split(ln, "–", 2)
+        ElseIf InStr(ln, "-") > 0 Then
+            parts = Split(ln, "-", 2)
+        Else
+            parts = Array(ln, "")
+        End If
+
+        nameStr = Trim$(parts(0))
+        titleStr = ""
+        If UBound(parts) > 0 Then titleStr = Trim$(parts(1))
+
+        ' Reverse order: Designation first, then Name
+        If Len(titleStr) > 0 Then
+            outText = outText & titleStr & ": " & nameStr & vbCrLf
+        Else
+            outText = outText & nameStr & vbCrLf
+        End If
+
+NextLine:
+    Next ln
+
+    BuildOwnershipBullets = Trim$(outText)
+End Function
+
