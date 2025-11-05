@@ -28,20 +28,19 @@ Private Function BuildBulletsFromHyphens(ByVal s As String) As String
     BuildBulletsFromHyphens = Trim$(outText)
 End Function
 
-
 ' === Step: Apply formatting to "Key Management" section ===
 Dim keyShape As Object
 Set keyShape = sld.Shapes("txt_KeyManagement")
 
-' Set base formatting for the entire text (Arial 10pt, normal)
+' Base formatting for entire text (reset first)
 With keyShape.TextFrame.TextRange.Font
     .Name = "Arial"
     .Size = 10
     .Bold = False
-    .Color.RGB = RGB(0, 0, 0)  ' regular text in black
+    .Color.RGB = RGB(0, 0, 0) ' black by default
 End With
 
-' === Highlight, capitalize, and bold date tokens (DD MMM YYYY:) ===
+' === Detect and format date tokens ===
 Set regex = CreateObject("VBScript.RegExp")
 With regex
     .Global = True
@@ -49,75 +48,45 @@ With regex
     .Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
 End With
 
-Dim tr As Object, matches As Object, m As Object
 Set tr = keyShape.TextFrame.TextRange
 Set matches = regex.Execute(tr.Text)
 
 If matches.Count > 0 Then
-    ' Capture the existing color of the first text character (usually theme blue)
+    ' Grab color of first character (your PPT blue)
     Dim dateColor As Long
     dateColor = tr.Characters(1, 1).Font.Color.RGB
 
-    Dim dateText As String
-    For Each m In matches
-        ' Convert date text to uppercase
-        dateText = UCase$(m.Value)
-        tr.Characters(m.FirstIndex + 1, Len(m.Value)).Text = dateText
-
-        ' Apply font styling for the date
-        With tr.Characters(m.FirstIndex + 1, Len(dateText)).Font
-            .Bold = True
-            .Name = "Arial"
-            .Size = 10
-            .Color.RGB = dateColor  ' keep existing PPT theme color
-        End With
-    Next m
-End If
-
-
-
-
-' === Step: Apply formatting to "Key Management" section ===
-Dim keyShape As Object
-Set keyShape = sld.Shapes("txt_KeyManagement")
-
-' Base formatting for the entire text
-With keyShape.TextFrame.TextRange.Font
-    .Name = "Arial"
-    .Size = 10
-    .Bold = False
-    .Color.RGB = RGB(0, 0, 0)  ' normal text black
-End With
-
-' === Highlight, capitalize, and bold date tokens (DD MMM YYYY:) ===
-Set regex = CreateObject("VBScript.RegExp")
-With regex
-    .Global = True
-    .IgnoreCase = False
-    .Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
-End With
-
-' reuse existing tr variable already declared in the main macro
-Set tr = keyShape.TextFrame.TextRange
-Set matches = regex.Execute(tr.Text)
-
-If matches.Count > 0 Then
-    ' Capture existing color from PPT (first char = theme color)
-    Dim dateColor As Long
-    dateColor = tr.Characters(1, 1).Font.Color.RGB
-
-    Dim dateText As String
+    Dim dateText As String, startPos As Long, dateLen As Long, afterLen As Long
     For Each m In matches
         ' Convert date to uppercase
         dateText = UCase$(m.Value)
-        tr.Characters(m.FirstIndex + 1, Len(m.Value)).Text = dateText
+        startPos = m.FirstIndex + 1
+        dateLen = Len(dateText)
 
-        ' Apply date formatting
-        With tr.Characters(m.FirstIndex + 1, Len(dateText)).Font
+        ' Replace original text with uppercase date
+        tr.Characters(startPos, Len(m.Value)).Text = dateText
+
+        ' Format the date part: blue + bold
+        With tr.Characters(startPos, dateLen).Font
             .Bold = True
             .Name = "Arial"
             .Size = 10
             .Color.RGB = dateColor
         End With
+
+        ' Format text after the colon (till next bullet or line break)
+        afterLen = 0
+        Do While startPos + dateLen + afterLen <= tr.Length
+            If Mid(tr.Text, startPos + dateLen + afterLen, 1) = vbCr Then Exit Do
+            afterLen = afterLen + 1
+        Loop
+        If afterLen > 0 Then
+            With tr.Characters(startPos + dateLen, afterLen).Font
+                .Bold = False
+                .Name = "Arial"
+                .Size = 10
+                .Color.RGB = RGB(0, 0, 0) ' ensure black
+            End With
+        End If
     Next m
 End If
