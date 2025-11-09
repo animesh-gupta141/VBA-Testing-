@@ -696,3 +696,40 @@ Nxt:
     BuildOwnershipBullets = Trim$(outText)
 End Function
 
+
+
+
+
+
+
+Dim newSlide As Object
+
+' Copy the right slide template (Internal = 1, External = 2)
+If entityType = "internal" Then
+    basePres.Slides(1).Copy
+Else
+    basePres.Slides(2).Copy
+End If
+
+' Paste it as a new slide at the end of the current presentation
+basePres.Slides.Paste
+Set newSlide = basePres.Slides(basePres.Slides.Count)
+
+' Work on this pasted slide
+Set sld = newSlide
+
+' >>> (Run all population logic here exactly as before)
+
+' After finishing all population:
+With Application.FileDialog(msoFileDialogSaveAs)
+    .Title = "Save populated PowerPoint as..."
+    .FilterIndex = 1
+    .InitialFileName = Replace(filePath, ".xlsx", "_AutoGen.pptx")
+    If .Show = -1 Then
+        basePres.SaveAs .SelectedItems(1)
+        MsgBox "PowerPoint saved successfully as:" & vbCrLf & .SelectedItems(1), vbInformation
+    Else
+        MsgBox "Save canceled — template left unchanged.", vbInformation
+    End If
+End With
+
