@@ -1,0 +1,352 @@
+Option Explicit
+
+Sub PopulatePPT_From_Excel_Single()
+    Dim excelApp As Object, wb As Object, ws As Object
+    Dim filePath As String
+    Dim entityType As String
+    Dim sld As Object, basePres As Presentation
+    Dim tbl As Object, rng As Object
+    Dim headers As Variant, dataRow As Variant
+    Dim col As Long, usedHeaders As Collection
+    Dim dynamicHeaders() As String, addHdr As String
+    Dim dynCount As Long
+
+    '--- Select Excel file ---
+    With Application.FileDialog(msoFileDialogFilePicker)
+        .Title = "Select Excel File"
+        .Filters.Add "Excel Files", "*.xls;*.xlsx;*.xlsm"
+        If .Show <> -1 Then Exit Sub
+        filePath = .SelectedItems(1)
+    End With
+
+    '--- Start Excel ---
+    On Error Resume Next
+    Set excelApp = GetObject(Class:="Excel.Application")
+    If excelApp Is Nothing Then Set excelApp = CreateObject("Excel.Application")
+    On Error GoTo 0
+    excelApp.Visible = False
+
+    '--- Open workbook ---
+    Set wb = excelApp.Workbooks.Open(filePath)
+    Set ws = wb.Sheets("Dashboard")
+
+    If ws Is Nothing Then
+        MsgBox "Dashboard sheet not found.", vbExclamation
+        GoTo Cleanup
+    End If
+
+    entityType = LCase(Trim(ws.Range("C24").Value))
+    headers = ws.Range("B2:M2").Value
+    dataRow = ws.Range("B3:M3").Value
+
+    Set usedHeaders = New Collection
+    For col = 1 To 12
+        If Trim(dataRow(1, col)) <> "" Then usedHeaders.Add headers(1, col)
+    Next col
+
+    Set basePres = ActivePresentation
+
+    '----------------------------------------------------------
+    ' Copy correct slide, paste it, and remove the templates
+    '----------------------------------------------------------
+    If entityType = "internal" Then
+        basePres.Slides(1).Copy
+    Else
+        basePres.Slides(2).Copy
+    End If
+
+    basePres.Slides.Paste
+    Set sld = basePres.Slides(basePres.Slides.Count)
+
+    ' Delete the two template slides
+    On Error Resume Next
+    basePres.Slides(2).Delete
+    basePres.Slides(1).Delete
+    On Error GoTo 0
+
+    '--- Always populate Overview and Developments ---
+    PopulateSection sld, "CompanyOverview", "CompanyOverviewHeader", ws, "Company Overview"
+    PopulateSection sld, "KeyDevelopments", "KeyDevelopmentsHeader", ws, "Key Developments"
+
+    '==================================================
+    '=== INTERNAL: slide 1 (with table + 1 dynamic) ===
+    '==================================================
+    If entityType = "internal" Then
+        On Error Resume Next
+        Set tbl = sld.Shapes("Table_KeyFinancials").Table
+        On Error GoTo 0
+        If Not tbl Is Nothing Then
+            Set rng = ws.Range("C7:E16")
+            FillFinancialTable tbl, rng
+        End If
+
+        addHdr = GetExtraHeader(usedHeaders, Array("Company Overview", "Key Developments", "Key Financials"))
+        If addHdr <> "" Then
+            PopulateDynamic sld, "txt_box", addHdr, ws
+            SafeSetHeaderText sld, "SubHeader1", addHdr
+        End If
+
+        SafeSetHeaderText sld, "CompanyOverviewHeader", "Company Overview"
+        SafeSetHeaderText sld, "KeyDevelopmentsHeader", "Key Developments"
+        SafeSetHeaderText sld, "KeyFinancialsHeader", "Key Financials"
+
+    '==================================================
+    '=== EXTERNAL: slide 2 (no table + 2 dynamics) ====
+    '==================================================
+    ElseIf entityType = "external" Then
+        dynamicHeaders = GetExtraHeadersArray(usedHeaders, Array("Company Overview", "Key Developments"), 2)
+        dynCount = UBound(dynamicHeaders)
+        If dynCount >= 1 And dynamicHeaders(1) <> "" Then
+            PopulateDynamic sld, "txt_box3", dynamicHeaders(1), ws
+            SafeSetHeaderText sld, "SubHeader1", dynamicHeaders(1)
+        End If
+        If dynCount >= 2 And dynamicHeaders(2) <> "" Then
+            PopulateDynamic sld, "txt_box4", dynamicHeaders(2), ws
+            SafeSetHeaderText sld, "SubHeader2", dynamicHeaders(2)
+        End If
+        SafeSetHeaderText sld, "CompanyOverviewHeader", "Company Overview"
+        SafeSetHeaderText sld, "KeyDevelopmentsHeader", "Key Developments"
+    End If
+
+    '--- Company name ---
+    On Error Resume Next
+    sld.Shapes("CompanyName").TextFrame.TextRange.Text = Trim(ws.Range("C22").Value)
+    On Error GoTo 0
+
+    '----------------------------------------------------------
+    ' Ask where to save the finished presentation
+    '----------------------------------------------------------
+    With Application.FileDialog(msoFileDialogSaveAs)
+        .Title = "Save populated PowerPoint as..."
+        .InitialFileName = Replace(Replace(Replace(filePath, ".xlsx", "_AutoGen.pptx"), ".xlsm", "_AutoGen.pptx"), ".xls", "_AutoGen.pptx")
+        If .Show = -1 Then
+            basePres.SaveAs .SelectedItems(1)
+            MsgBox "PowerPoint saved successfully as:" & vbCrLf & .SelectedItems(1), vbInformation
+        Else
+            MsgBox "Save canceled — template left unchanged.", vbInformation
+        End If
+    End With
+
+Cleanup:
+    On Error Resume Next
+    wb.Close SaveChanges:=False
+    excelApp.Quit
+    Set excelApp = Nothing
+End Sub
+
+
+'==========================================================
+'=== Core section population ==============================
+'==========================================================
+Private Sub PopulateSection(sld As Object, shpName As String, hdrName As String, ws As Object, headerTitle As String)
+    Dim col As Long, txt As String, outText As String
+    col = FindHeaderColumn(ws, headerTitle)
+    If col = 0 Then Exit Sub
+    txt = CStr(ws.Cells(3, col).Value)
+    Select Case headerTitle
+        Case "Company Overview": outText = BuildBulletsFromHyphens(txt)
+        Case "Key Developments": outText = BuildKeyDevBullets(txt)
+        Case "Key Management", "Ownership": outText = BuildOwnershipBullets(txt)
+        Case Else: outText = BuildBulletsFromHyphens(txt)
+    End Select
+    ApplyBulletedText_Simple sld.Shapes(shpName), outText
+    SafeSetHeaderText sld, hdrName, headerTitle
+    If headerTitle = "Key Developments" Then FormatKeyDevDates sld.Shapes(shpName)
+End Sub
+
+
+Private Sub PopulateDynamic(sld As Object, shpName As String, headerTitle As String, ws As Object)
+    Dim col As Long, txt As String, outText As String
+    col = FindHeaderColumn(ws, headerTitle)
+    If col = 0 Then Exit Sub
+    txt = CStr(ws.Cells(3, col).Value)
+    Select Case headerTitle
+        Case "Key Management", "Ownership": outText = BuildOwnershipBullets(txt)
+        Case "Key Developments": outText = BuildKeyDevBullets(txt)
+        Case Else: outText = BuildBulletsFromHyphens(txt)
+    End Select
+    ApplyBulletedText_Simple sld.Shapes(shpName), outText
+    If headerTitle = "Key Developments" Then FormatKeyDevDates sld.Shapes(shpName)
+End Sub
+
+
+'==========================================================
+'=== Utilities ============================================
+'==========================================================
+Private Function FindHeaderColumn(ws As Object, headerName As String) As Long
+    Dim i As Long
+    For i = 2 To 13
+        If Trim(LCase(ws.Cells(2, i).Value)) = LCase(headerName) Then
+            FindHeaderColumn = i: Exit Function
+        End If
+    Next i
+End Function
+
+Private Function GetExtraHeader(col As Collection, skipList As Variant) As String
+    Dim h As Variant, s As Variant, skip As Boolean
+    For Each h In col
+        skip = False
+        For Each s In skipList
+            If LCase(h) = LCase(s) Then skip = True: Exit For
+        Next s
+        If Not skip Then GetExtraHeader = h: Exit Function
+    Next h
+End Function
+
+Private Function GetExtraHeadersArray(col As Collection, skipList As Variant, needCount As Long) As String()
+    Dim arr() As String, h As Variant, s As Variant, skip As Boolean, c As Long
+    ReDim arr(0 To needCount)
+    For Each h In col
+        skip = False
+        For Each s In skipList
+            If LCase(h) = LCase(s) Then skip = True: Exit For
+        Next s
+        If Not skip Then
+            c = c + 1
+            If c <= needCount Then arr(c) = h
+        End If
+    Next h
+    GetExtraHeadersArray = arr
+End Function
+
+Private Sub FillFinancialTable(tbl As Object, rng As Object)
+    Dim i As Long, j As Long, minRows As Long, minCols As Long
+    Dim refFontName As String, refFontSize As Single, refFontColor As Long
+    On Error Resume Next
+    With tbl.Cell(1, 1).Shape.TextFrame.TextRange.Font
+        refFontName = .Name: refFontSize = .Size: refFontColor = .Color.RGB
+    End With
+    On Error GoTo 0
+    If Len(refFontName) = 0 Then refFontName = "Calibri"
+    If refFontSize = 0 Then refFontSize = 11
+    If refFontColor = 0 Then refFontColor = RGB(0, 0, 0)
+    minRows = MinLong(tbl.Rows.Count, rng.Rows.Count)
+    minCols = MinLong(tbl.Columns.Count - 1, rng.Columns.Count)
+    For i = 1 To minRows
+        For j = 2 To minCols + 1
+            tbl.Cell(i, j).Shape.TextFrame.TextRange.Text = CStr(rng.Cells(i, j - 1).Text)
+            With tbl.Cell(i, j).Shape.TextFrame.TextRange.Font
+                .Name = refFontName
+                .Size = refFontSize
+                If i > 1 And refFontColor = RGB(255, 255, 255) Then
+                    .Color.RGB = RGB(0, 0, 0)
+                Else
+                    .Color.RGB = refFontColor
+                End If
+            End With
+        Next j
+    Next i
+End Sub
+
+Private Sub SafeSetHeaderText(sld As Object, hdrName As String, newText As String)
+    On Error Resume Next
+    Dim tr As Object
+    Set tr = sld.Shapes(hdrName).TextFrame.TextRange
+    If Not tr Is Nothing Then tr.Text = newText
+    On Error GoTo 0
+End Sub
+
+Private Sub FormatKeyDevDates(shp As Object)
+    Dim regex As Object, matches As Object, m As Object, tr As Object, dateText As String
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = True: regex.Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
+    Set tr = shp.TextFrame.TextRange
+    Set matches = regex.Execute(tr.Text)
+    For Each m In matches
+        dateText = UCase$(m.Value)
+        tr.Characters(m.FirstIndex + 1, Len(m.Value)).Text = dateText
+        With tr.Characters(m.FirstIndex + 1, Len(dateText)).Font
+            .Bold = True
+            .Color.RGB = RGB(49, 134, 155)
+            .Name = "Arial"
+            .Size = 10
+        End With
+    Next m
+End Sub
+
+Private Function MinLong(a As Long, b As Long) As Long
+    If a < b Then MinLong = a Else MinLong = b
+End Function
+
+
+'==========================================================
+'=== Text formatting helpers ==============================
+'==========================================================
+Private Sub ApplyBulletedText_Simple(shp As Object, ByVal textBody As String)
+    With shp.TextFrame
+        .AutoSize = 0
+        .TextRange.Text = Trim$(textBody)
+    End With
+    With shp.TextFrame.TextRange.ParagraphFormat.Bullet
+        .Visible = True
+        .Character = 8226
+    End With
+    With shp.TextFrame.TextRange.Font
+        .Name = "Calibri"
+        .Size = 12
+    End With
+End Sub
+
+Private Function BuildBulletsFromHyphens(ByVal s As String) As String
+    Dim parts As Variant, p As Variant, outText As String
+    s = Replace(Replace(Replace(s, vbCrLf, " "), vbCr, " "), vbLf, " ")
+    parts = Split(s, "- ")
+    For Each p In parts
+        If Len(Trim$(p)) > 0 Then outText = outText & Trim$(p) & vbCrLf
+    Next p
+    BuildBulletsFromHyphens = Trim$(outText)
+End Function
+
+Private Function BuildKeyDevBullets(ByVal s As String) As String
+    Dim regex As Object, matches As Object, i As Long, starts() As Long, ends() As Long, outText As String
+    s = Replace(s, vbCr, " "): s = Replace(s, vbLf, " ")
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = True: regex.Pattern = "(\b\d{1,2}\s[A-Za-z]{3}\s\d{4}:)"
+    Set matches = regex.Execute(s)
+    If matches.Count = 0 Then BuildKeyDevBullets = Trim$(s): Exit Function
+    ReDim starts(0 To matches.Count - 1): ReDim ends(0 To matches.Count - 1)
+    For i = 0 To matches.Count - 1: starts(i) = matches(i).FirstIndex + 1: Next i
+    For i = 0 To UBound(starts)
+        If i < UBound(starts) Then ends(i) = starts(i + 1) - 1 Else ends(i) = Len(s)
+    Next i
+    For i = 0 To UBound(starts)
+        outText = outText & Trim$(Mid$(s, starts(i), ends(i) - starts(i) + 1)) & vbCrLf
+    Next i
+    BuildKeyDevBullets = Trim$(outText)
+End Function
+
+Private Function BuildOwnershipBullets(ByVal s As String) As String
+    Dim cleaned As String, lines As Variant, ln As Variant
+    Dim parts As Variant, nameStr As String, titleStr As String, outText As String
+
+    cleaned = Trim$(s)
+    cleaned = Replace(cleaned, vbCrLf, vbLf)
+    cleaned = Replace(cleaned, vbCr, vbLf)
+    cleaned = Replace(cleaned, """", "")
+    cleaned = Replace(cleaned, "'", "")
+    cleaned = Replace(cleaned, "–", "-")
+
+    lines = Split(cleaned, vbLf)
+
+    For Each ln In lines
+        ln = Trim$(ln)
+        If Len(ln) = 0 Then GoTo NextLine
+        If Left$(ln, 1) = "-" Then ln = Mid$(ln, 2)
+        ln = Trim$(ln)
+        If InStr(ln, "-") > 0 Then
+            parts = Split(ln, "-", 2)
+            nameStr = Trim$(parts(0))
+            titleStr = Trim$(parts(1))
+            If Len(titleStr) > 0 Then
+                outText = outText & titleStr & ": " & nameStr & vbCrLf
+            Else
+                outText = outText & nameStr & vbCrLf
+            End If
+        Else
+            outText = outText & ln & vbCrLf
+        End If
+NextLine:
+    Next ln
+
+    BuildOwnershipBullets = Trim$(outText)
+End Function
